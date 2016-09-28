@@ -1,17 +1,17 @@
 /* jcifs smb client library in Java
  * Copyright (C) 2005  "Michael B. Allen" <jcifs at samba dot org>
  *                  "Eric Glass" <jcifs at samba dot org>
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
@@ -27,8 +27,6 @@ import jcifs.*;
 import jcifs.netbios.*;
 import jcifs.util.*;
 import jcifs.util.transport.*;
-import jcifs.dcerpc.*;
-import jcifs.dcerpc.msrpc.*;
 
 public class SmbTransport extends Transport implements SmbConstants {
 
@@ -36,6 +34,11 @@ public class SmbTransport extends Transport implements SmbConstants {
     static final SmbComNegotiate NEGOTIATE_REQUEST = new SmbComNegotiate();
     static LogStream log = LogStream.getInstance();
     static HashMap dfsRoots = null;
+    static boolean port139Enabled;
+
+    static {
+        port139Enabled = Config.getBoolean( "jcifs.smb.client.port139.enabled", false );
+    }
 
     static synchronized SmbTransport getSmbTransport( UniAddress address, int port ) {
         return getSmbTransport( address, port, LADDR, LPORT, null );
@@ -318,10 +321,10 @@ public class SmbTransport extends Transport implements SmbConstants {
         try {
             negotiate( port, resp );
         } catch( ConnectException ce ) {
-            port = (port == 0 || port == DEFAULT_PORT) ? 139 : DEFAULT_PORT;
+            port = (port139Enabled && (port == 0 || port == DEFAULT_PORT)) ? 139 : DEFAULT_PORT;
             negotiate( port, resp );
         } catch( NoRouteToHostException nr ) {
-            port = (port == 0 || port == DEFAULT_PORT) ? 139 : DEFAULT_PORT;
+            port = (port139Enabled && (port == 0 || port == DEFAULT_PORT)) ? 139 : DEFAULT_PORT;
             negotiate( port, resp );
         }
 
@@ -551,7 +554,7 @@ public class SmbTransport extends Transport implements SmbConstants {
 
                 DfsReferral dr = getDfsReferrals(req.auth, req.path, 1);
                 if (dr == null)
-                    throw new SmbException(resp.errorCode, null);   
+                    throw new SmbException(resp.errorCode, null);
 
                 SmbFile.dfs.insert(req.path, dr);
                 throw dr;
@@ -591,9 +594,9 @@ public class SmbTransport extends Transport implements SmbConstants {
                 try {
                     BufferCache.getBuffers( req, resp );
 
-                    /* 
+                    /*
                      * First request w/ interim response
-                     */ 
+                     */
 
                     req.nextElement();
                     if (req.hasMoreElements()) {
@@ -613,7 +616,7 @@ public class SmbTransport extends Transport implements SmbConstants {
                         try {
                             response_map.put( req, resp );
 
-                            /* 
+                            /*
                              * Send multiple fragments
                              */
 
@@ -621,7 +624,7 @@ public class SmbTransport extends Transport implements SmbConstants {
                                 doSend0( req );
                             } while( req.hasMoreElements() && req.nextElement() != null );
 
-                            /* 
+                            /*
                              * Receive multiple fragments
                              */
 

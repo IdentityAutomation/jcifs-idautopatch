@@ -1,16 +1,16 @@
 /* jcifs smb client library in Java
  * Copyright (C) 2000  "Michael B. Allen" <jcifs at samba dot org>
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
@@ -28,6 +28,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Random;
 import java.security.Principal;
 import jcifs.Config;
 import jcifs.util.LogStream;
@@ -35,8 +36,6 @@ import jcifs.UniAddress;
 import jcifs.netbios.NbtAddress;
 import jcifs.dcerpc.*;
 import jcifs.dcerpc.msrpc.*;
-
-import java.util.Date;
 
 /**
  * This class represents a resource on an SMB network. Mainly these
@@ -91,31 +90,31 @@ import java.util.Date;
  *
  * <p>[1] This URL scheme is based largely on the <i>SMB
  * Filesharing URL Scheme</i> IETF draft.
- * 
+ *
  * <p><table border="1" cellpadding="3" cellspacing="0" width="100%">
  * <tr bgcolor="#ccccff">
  * <td colspan="2"><b>SMB URL Examples</b></td>
  * <tr><td width="20%"><b>URL</b></td><td><b>Description</b></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>smb://users-nyc;miallen:mypass@angus/tmp/</code></td><td>
  * This URL references a share called <code>tmp</code> on the server
  * <code>angus</code> as user <code>miallen</code> who's password is
  * <code>mypass</code>.
  * </td></tr>
- * 
+ *
  * <tr><td width="20%">
  * <code>smb://Administrator:P%40ss@msmith1/c/WINDOWS/Desktop/foo.txt</code></td><td>
  * A relativly sophisticated example that references a file
  * <code>msmith1</code>'s desktop as user <code>Administrator</code>. Notice the '@' is URL encoded with the '%40' hexcode escape.
  * </td></tr>
- * 
+ *
  * <tr><td width="20%"><code>smb://angus/</code></td><td>
  * This references only a server. The behavior of some methods is different
  * in this context(e.g. you cannot <code>delete</code> a server) however
  * as you might expect the <code>list</code> method will list the available
  * shares on this server.
  * </td></tr>
- * 
+ *
  * <tr><td width="20%"><code>smb://myworkgroup/</code></td><td>
  * This syntactically is identical to the above example. However if
  * <code>myworkgroup</code> happends to be a workgroup(which is indeed
@@ -123,7 +122,7 @@ import java.util.Date;
  * a list of servers that have registered themselves as members of
  * <code>myworkgroup</code>.
  * </td></tr>
- * 
+ *
  * <tr><td width="20%"><code>smb://</code></td><td>
  * Just as <code>smb://server/</code> lists shares and
  * <code>smb://workgroup/</code> lists servers, the <code>smb://</code>
@@ -131,24 +130,24 @@ import java.util.Date;
  * in this context many methods are not valid and return default
  * values(e.g. <code>isHidden</code> will always return false).
  * </td></tr>
- * 
+ *
  * <tr><td width="20%"><code>smb://angus.foo.net/d/jcifs/pipes.doc</code></td><td>
  * The server name may also be a DNS name as it is in this example. See
  * <a href="../../../resolver.html">Setting Name Resolution Properties</a>
  * for details.
  * </td></tr>
- * 
+ *
  * <tr><td width="20%"><code>smb://192.168.1.15/ADMIN$/</code></td><td>
  * The server name may also be an IP address. See <a
  * href="../../../resolver.html">Setting Name Resolution Properties</a>
  * for details.
  * </td></tr>
- * 
+ *
  * <tr><td width="20%">
  * <code>smb://domain;username:password@server/share/path/to/file.txt</code></td><td>
  * A prototypical example that uses all the fields.
  * </td></tr>
- * 
+ *
  * <tr><td width="20%"><code>smb://myworkgroup/angus/ &lt;-- ILLEGAL </code></td><td>
  * Despite the hierarchial relationship between workgroups, servers, and
  * filesystems this example is not valid.
@@ -169,7 +168,7 @@ import java.util.Date;
  * </td></tr>
  *
  * </table>
- * 
+ *
  * <p>A second constructor argument may be specified to augment the URL
  * for better programmatic control when processing many files under
  * a common base. This is slightly different from the corresponding
@@ -192,7 +191,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://host/share/a/b/c/d/
  * </code></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>
  *  smb://host/share/foo/bar/
  * </code></td><td width="20%"><code>
@@ -200,7 +199,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://host/share2/zig/zag
  * </code></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>
  *  smb://host/share/foo/bar/
  * </code></td><td width="20%"><code>
@@ -208,7 +207,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://host/share/foo/zip/
  * </code></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>
  *  smb://host/share/zig/zag
  * </code></td><td width="20%"><code>
@@ -216,7 +215,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://foo/bar/
  * </code></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>
  *  smb://host/share/foo/
  * </code></td><td width="20%"><code>
@@ -224,7 +223,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://host/foo/
  * </code></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>
  *  smb://host/share/zig/zag
  * </code></td><td width="20%"><code>
@@ -232,7 +231,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://host/
  * </code></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>
  *  smb://server/
  * </code></td><td width="20%"><code>
@@ -240,7 +239,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://server/
  * </code></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>
  *  smb://
  * </code></td><td width="20%"><code>
@@ -248,7 +247,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://myworkgroup/
  * </code></td></tr>
- * 
+ *
  * <tr><td width="20%"><code>
  *  smb://myworkgroup/
  * </code></td><td width="20%"><code>
@@ -256,7 +255,7 @@ import java.util.Date;
  * </code></td><td><code>
  *  smb://myworkgroup/angus/ &lt;-- ILLEGAL<br>(But if you first create an <tt>SmbFile</tt> with 'smb://workgroup/' and use and use it as the first parameter to a constructor that accepts it with a second <tt>String</tt> parameter jCIFS will factor out the 'workgroup'.)
  * </code></td></tr>
- * 
+ *
  * </table>
  *
  * <p>Instances of the <code>SmbFile</code> class are immutable; that is,
@@ -312,12 +311,12 @@ public class SmbFile extends URLConnection implements SmbConstants {
     public static final int FILE_SHARE_DELETE = 0x04;
 
     // file attribute encoding
-/** 
+/**
  * A file with this bit on as returned by <tt>getAttributes()</tt> or set
  * with <tt>setAttributes()</tt> will be read-only
- */ 
+ */
     public static final int ATTR_READONLY   = 0x01;
-/** 
+/**
  * A file with this bit on as returned by <tt>getAttributes()</tt> or set
  * with <tt>setAttributes()</tt> will be hidden
  */
@@ -359,6 +358,7 @@ public class SmbFile extends URLConnection implements SmbConstants {
     static LogStream log = LogStream.getInstance();
     static long attrExpirationPeriod;
     static boolean ignoreCopyToException;
+    static Random random = new Random();
 
     static {
 
@@ -368,7 +368,7 @@ public class SmbFile extends URLConnection implements SmbConstants {
             cnfe.printStackTrace();
         }
         attrExpirationPeriod = Config.getLong( "jcifs.smb.client.attrExpirationPeriod", DEFAULT_ATTR_EXPIRATION_PERIOD );
-        ignoreCopyToException = Config.getBoolean( "jcifs.smb.client.ignoreCopyToException", true );
+        ignoreCopyToException = Config.getBoolean( "jcifs.smb.client.ignoreCopyToException", false );
         dfs = new Dfs();
     }
 
@@ -432,7 +432,7 @@ public class SmbFile extends URLConnection implements SmbConstants {
     boolean opened;
     int tree_num;
 
-/** 
+/**
  * Constructs an SmbFile representing a resource on an SMB network such as
  * a file or directory. See the description and examples of smb URLs above.
  *
@@ -665,7 +665,32 @@ public class SmbFile extends URLConnection implements SmbConstants {
     void resolveDfs(ServerMessageBlock request) throws SmbException {
         if (request instanceof SmbComClose)
             return;
-
+        // GoogleModified: We have a customer that encounters sporadic NPE and
+        // NT_STATUS_NOT_FOUND errors, apparently due to bad connections.
+        for (int retries = 1; retries < 4; retries++) {
+            try {
+                resolveDfs0(request);
+                return;
+            } catch (NullPointerException npe) {
+                // Bug where transport or tconHostName is null indicates
+                // failed to clean up properly from dropped connection.
+            } catch (SmbException smbe) {
+                // The connection may have been dropped?
+                if (smbe.getNtStatus() != NtStatus.NT_STATUS_NOT_FOUND) {
+                    throw smbe;
+                }
+            }
+            // If we get here, we apparently have a bad connection.
+            // Disconnect and try again.
+            if (log.level >= 2)
+                log.println("Retrying (" + retries + ") resolveDfs: " + request);
+            disconnect(true);
+            try {
+                Thread.sleep(500 + random.nextInt(5000));
+            } catch (InterruptedException e) {}
+        }
+    }
+    private void resolveDfs0(ServerMessageBlock request) throws SmbException {
         connect0();
 
         DfsReferral dr = dfs.resolve(
@@ -769,7 +794,40 @@ public class SmbFile extends URLConnection implements SmbConstants {
     }
     void send( ServerMessageBlock request,
                     ServerMessageBlock response ) throws SmbException {
-        for( ;; ) {
+        // GoogleModified: We have a customer that encounters sporadic
+        // 'The Parameter is incorrect' errors, apparently due to bad connections.
+        String savedPath = (request != null) ? request.path : null;
+        for (int retries = 1; retries < 4; retries++) {
+            try {
+                send0(request, response);
+                return;
+            } catch (SmbException smbe) {
+                if (smbe.getNtStatus() != NtStatus.NT_STATUS_INVALID_PARAMETER) {
+                    throw smbe;
+                }
+            }
+            // If we get here, we got the 'The Parameter is incorrect' error.
+            // Disconnect and try again from scratch.
+            if (log.level >= 2)
+                log.println("Retrying (" + retries + ") send: " + request);
+            disconnect(true);
+            try {
+                Thread.sleep(500 + random.nextInt(5000));
+            } catch (InterruptedException e) {}
+            if (request != null) {
+                // resolveDfs() and tree.send() modify the request packet.
+                // I want to restore it before retrying.  request.reset()
+                // restores almost everything that was modified, except the path.
+                request.reset();
+                request.path = savedPath;
+            }
+            if (response != null)
+                response.reset();
+            connect0();
+        }
+    }
+    private void send0( ServerMessageBlock request,
+                        ServerMessageBlock response ) throws SmbException {        for( ;; ) {
             resolveDfs(request);
             try {
                 tree.send( request, response );
@@ -959,11 +1017,18 @@ int addressIndex;
             } catch(SmbAuthException sae) {
                 throw sae; // Prevents account lockout on servers with multiple IPs
             } catch(SmbException se) {
-                if (getNextAddress() == null) 
+                if (getNextAddress() == null)
                     throw se;
                 if (log.level >= 3)
                     se.printStackTrace(log);
             }
+        }
+    }
+    void disconnect(boolean inError) {
+        if (isConnected()) {
+            tree.treeDisconnect(inError);
+            tree.session.logoff(inError);
+            tree = null;
         }
     }
     boolean isConnected() {
@@ -1205,7 +1270,7 @@ if (this instanceof SmbNamedPipe) {
         return unc;
     }
 /**
- * Retuns the Windows UNC style path with backslashs intead of forward slashes.
+ * Retuns the Windows UNC style path with backslashs instead of forward slashes.
  *
  * @return  The UNC path.
  */
@@ -1253,15 +1318,15 @@ if (this instanceof SmbNamedPipe) {
         }
         return getServer();
     }
-/** 
+/**
  * Retrieve the hostname of the server for this SMB resource. If this
  * <code>SmbFile</code> references a workgroup, the name of the workgroup
  * is returned. If this <code>SmbFile</code> refers to the root of this
  * SMB network hierarchy, <code>null</code> is returned.
- * 
+ *
  * @return  The server or workgroup name or <code>null</code> if this
  *          <code>SmbFile</code> refers to the root <code>smb://</code> resource.
- */ 
+ */
 
     public String getServer() {
         String str = url.getHost();
@@ -2080,12 +2145,12 @@ if (this instanceof SmbNamedPipe) {
     }
 
     class WriterThread extends Thread {
-        byte[] b;
-        int n;
-        long off;
-        boolean ready;
-        SmbFile dest;
-        SmbException e = null;
+        volatile byte[] b;
+        volatile int n;
+        volatile long off;
+        volatile boolean ready;
+        volatile SmbFile dest;
+        volatile SmbException e = null;
         boolean useNTSmbs;
         SmbComWriteAndX reqx;
         SmbComWrite req;
@@ -2104,13 +2169,30 @@ if (this instanceof SmbNamedPipe) {
             ready = false;
         }
 
-        synchronized void write( byte[] b, int n, SmbFile dest, long off ) {
+        synchronized void write( byte[] b, int n, SmbFile dest, long off ) throws SmbException {
+            if( e != null ) {
+                throw e;
+            }
+            waitUntilReady();
+            if( e != null ) {
+                throw e;
+            }
             this.b = b;
             this.n = n;
             this.dest = dest;
             this.off = off;
             ready = false;
             notify();
+        }
+
+        synchronized void waitUntilReady() throws SmbException {
+            while( !ready ) {
+                try {
+                    wait();
+                } catch( InterruptedException ie ) {
+                    throw new SmbException( dest.url.toString(), ie );
+                }
+            }
         }
 
         public void run() {
@@ -2135,9 +2217,10 @@ if (this instanceof SmbNamedPipe) {
                     }
                 } catch( SmbException e ) {
                     this.e = e;
-                } catch( Exception x ) {
-                    this.e = new SmbException( "WriterThread", x );
+                } catch( Throwable t ) {
+                    this.e = new SmbException( "WriterThread", t );
                 }
+                ready = true;
                 notify();
             }
         }
@@ -2220,42 +2303,34 @@ if (this instanceof SmbNamedPipe) {
                         throw sae;
                     }
                 }
-    
-                i = 0;
-                off = 0L;
-                for( ;; ) {
-                    req.setParam( fid, off, bsize );
-                    resp.setParam( b[i], 0 );
-                    send( req, resp );
-    
-                    synchronized( w ) {
-                        if( w.e != null ) {
-                            throw w.e;
-                        }
-                        while( !w.ready ) {
-                            try {
-                                w.wait();
-                            } catch( InterruptedException ie ) {
-                                throw new SmbException( dest.url.toString(), ie );
+
+                try {
+                    i = 0;
+                    off = 0L;
+                    for( ;; ) {
+                        req.setParam( fid, off, bsize );
+                        resp.setParam( b[i], 0 );
+                        send( req, resp );
+
+                            if( resp.dataLength <= 0 ) {
+                                break;
                             }
-                        }
-                        if( w.e != null ) {
-                            throw w.e;
-                        }
-                        if( resp.dataLength <= 0 ) {
-                            break;
-                        }
-                        w.write( b[i], resp.dataLength, dest, off );
+
+                            w.write( b[i], resp.dataLength, dest, off );
+
+                        i = i == 1 ? 0 : 1;
+                        off += resp.dataLength;
                     }
-    
-                    i = i == 1 ? 0 : 1;
-                    off += resp.dataLength;
+                } finally {
+                    try {
+                        w.waitUntilReady();
+                        dest.send( new Trans2SetFileInformation(
+                            dest.fid, attributes, createTime, lastModified ),
+                            new Trans2SetFileInformationResponse() );
+                    } finally {
+                        dest.close( 0L );
+                    }
                 }
-    
-                dest.send( new Trans2SetFileInformation(
-                        dest.fid, attributes, createTime, lastModified ),
-                        new Trans2SetFileInformationResponse() );
-                dest.close( 0L );
             } catch( SmbException se ) {
 
                 if (ignoreCopyToException == false)
@@ -2578,9 +2653,12 @@ if (this instanceof SmbNamedPipe) {
 
         f = open0( O_RDONLY, FILE_WRITE_ATTRIBUTES,
                 dir, dir != 0 ? 0x0001 : 0x0040 );
-        send( new Trans2SetFileInformation( f, attrs | dir, ctime, mtime ),
-                new Trans2SetFileInformationResponse() );
-        close( f, 0L );
+        try {
+            send( new Trans2SetFileInformation( f, attrs | dir, ctime, mtime ),
+                    new Trans2SetFileInformationResponse() );
+        } finally {
+            close( f, 0L );
+        }
 
         attrExpiration = 0;
     }

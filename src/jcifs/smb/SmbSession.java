@@ -237,9 +237,10 @@ synchronized (transport()) {
         try {
             transport.send( request, response );
         } catch (SmbException se) {
-            if (request instanceof SmbComTreeConnectAndX) {
-                logoff(true);
-            }
+// idautopatch - see http://news.gmane.org/find-root.php?group=gmane.network.samba.java&article=9353
+//            if (request instanceof SmbComTreeConnectAndX) {
+//                logoff(true);
+//            }
             request.digest = null;
             throw se;
         }
