@@ -573,6 +573,8 @@ public class SmbTransport extends Transport implements SmbConstants {
 
         connect(); /* must negotiate before we can test flags2, useUnicode, etc */
 
+        long effectiveResponseTimeout = request.responseTimeout < 0 ? -request.responseTimeout : RESPONSE_TIMEOUT ;
+
         request.flags2 |= flags2;
         request.useUnicode = useUnicode;
         request.response = response; /* needed by sign */
@@ -601,7 +603,7 @@ public class SmbTransport extends Transport implements SmbConstants {
                     req.nextElement();
                     if (req.hasMoreElements()) {
                         SmbComBlankResponse interim = new SmbComBlankResponse();
-                        super.sendrecv( req, interim, RESPONSE_TIMEOUT );
+                        super.sendrecv( req, interim, effectiveResponseTimeout );
                         if (interim.errorCode != 0) {
                             checkStatus( req, interim );
                         }
@@ -628,7 +630,7 @@ public class SmbTransport extends Transport implements SmbConstants {
                              * Receive multiple fragments
                              */
 
-                            long timeout = RESPONSE_TIMEOUT;
+                            long timeout = effectiveResponseTimeout ;
                             resp.expiration = System.currentTimeMillis() + timeout;
                             while( resp.hasMoreElements() ) {
                                 wait( timeout );
@@ -655,7 +657,7 @@ public class SmbTransport extends Transport implements SmbConstants {
 
             } else {
                 response.command = request.command;
-                super.sendrecv( request, response, RESPONSE_TIMEOUT );
+                super.sendrecv( request, response, effectiveResponseTimeout  );
             }
         } catch( SmbException se ) {
             throw se;

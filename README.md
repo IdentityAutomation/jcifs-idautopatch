@@ -7,7 +7,7 @@ Maven artifact
 <dependency>
   <groupId>net.idauto.oss.jcifs</groupId>
   <artifactId>jcifs-idautopatch</artifactId>
-  <version>1.3.18.6</version>
+  <version>1.3.18.8</version>
 </dependency>    
 ```    
 
@@ -16,6 +16,7 @@ or download jar from [Releases](https://github.com/IdentityAutomation/jcifs-idau
 Patches include:
 
 * Bug fixes and minor changes from [Identity Automation](http://www.identityautomation.com)
+  * Support for dynamic response timeouts via SmbFile.setReadTimeout() when reading from a Named Pipe.
   * [WriterThreads are leaking](https://lists.samba.org/archive/jcifs/2013-October/010115.html)
   * [Issues with closing destination file in SmbFile.copyTo()](https://lists.samba.org/archive/jcifs/2014-June/010165.html) 
   * Change default value for jcifs property jcifs.smb.client.ignoreCopyToException from true to false

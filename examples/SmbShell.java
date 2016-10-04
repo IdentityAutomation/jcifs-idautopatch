@@ -5,19 +5,18 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * 
+ *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 import jcifs.smb.*;
-import java.net.UnknownHostException;
 import java.net.MalformedURLException;
 import java.util.GregorianCalendar;
 import java.text.SimpleDateFormat;
@@ -88,7 +87,7 @@ public class SmbShell extends NtlmAuthenticator {
                     continue;
                 }
                 System.out.print( prompt );
-    
+
                 cmd = readLine();
                 if( cmd.equals( "" ) ) {
                 } else if( cmd.startsWith( "cd" )) {
@@ -139,17 +138,17 @@ public class SmbShell extends NtlmAuthenticator {
                         for( int j = 0; j < list.length; j++ ) {
                             StringBuffer sb = new StringBuffer();
                             Date date = new Date( list[j].lastModified() );
-                            Format.print( System.out, "%-40s", list[j].getName() );
+                            System.out.printf("%-40s", list[j].getName() );
                             sb.append( list[j].isDirectory() ? 'd' : '-' );
                             sb.append( list[j].canRead() ? 'r' : '-' );
                             sb.append( list[j].canWrite() ? 'w' : '-' );
                             sb.append( list[j].isHidden() ? 'h' : '-' );
                             sb.append( list[j].getType() == SmbFile.TYPE_WORKGROUP ? 'g' : '-' );
-                            Format.print( System.out, "%-6s", sb.toString() );
-                            Format.print( System.out, "%10d ", list[j].length() );
+                            System.out.printf("%-6s", sb.toString() );
+                            System.out.printf("%10d ", list[j].length() );
 
                             System.out.print( sdf1.format( date ));
-                            Format.print( System.out, "%3s ", sdf2.format( date ));
+                            System.out.printf("%3s ", sdf2.format( date ));
                             System.out.print( sdf3.format( date ));
                             System.out.println();
                         }

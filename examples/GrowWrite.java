@@ -11,18 +11,22 @@ public class GrowWrite {
         byte[] buf = new byte[SIZE];
         SmbFile f = new SmbFile( argv[0] );
         SmbFileOutputStream out = new SmbFileOutputStream( f );
-
-        n = tot = 0;
-        do {
-            if(( n % 0x1F ) == 0) {
-                f = new SmbFile( argv[0] );
-                out = new SmbFileOutputStream( f );
-                System.out.print( '#' );
-            }
-            out.write( buf, 0, n );
-            out.flush();
-            tot += n;
-        } while( n++ < SIZE );
+        try {
+            n = tot = 0;
+            do {
+                if ((n % 0x1F) == 0) {
+                    f = new SmbFile(argv[0]);
+                    out.close();
+                    out = new SmbFileOutputStream(f);
+                    System.out.print('#');
+                }
+                out.write(buf, 0, n);
+                out.flush();
+                tot += n;
+            } while (n++ < SIZE);
+        } finally {
+            out.close();
+        }
 
         System.out.println();
         System.out.println( tot + " bytes transfered." );

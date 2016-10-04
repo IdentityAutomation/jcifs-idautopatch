@@ -1,17 +1,17 @@
 /* jcifs smb client library in Java
  * Copyright (C) 2006  "Michael B. Allen" <jcifs at samba dot org>
  *                     "Eric Glass" <jcifs at samba dot org>
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
@@ -538,7 +538,7 @@ synchronized (sid_cache) {
      * constructor, JCIFS will have no knowledge of the server that created the
      * SID and therefore cannot possibly resolve it automatically. In this case,
      * this method will be necessary.
-     *  
+     *
      * @param authorityServerName The FQDN of the server that is an authority for the SID.
      * @param auth Credentials suitable for accessing the SID's information.
      */
@@ -652,7 +652,7 @@ synchronized (sid_cache) {
      * Domain groups nested inside a local group are currently not expanded. In
      * this case the key (SID) type will be SID_TYPE_DOM_GRP rather than
      * SID_TYPE_USER.
-     * 
+     *
      * @param authorityServerName The server from which the local groups will be queried.
      * @param auth The credentials required to query groups and group members.
      * @param flags Flags that control the behavior of the operation. When all
@@ -660,7 +660,7 @@ synchronized (sid_cache) {
      * flag should be used which causes all group member SIDs to be resolved
      * together in a single more efficient operation.
      */
-    static Map getLocalGroupsMap(String authorityServerName,
+    public static Map getLocalGroupsMap(String authorityServerName,
                     NtlmPasswordAuthentication auth,
                     int flags) throws IOException {
         SID domsid = SID.getServerSid(authorityServerName, auth);
