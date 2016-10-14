@@ -1,16 +1,16 @@
 /* jcifs smb client library in Java
  * Copyright (C) 2000  "Michael B. Allen" <jcifs at samba dot org>
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
@@ -27,6 +27,8 @@ import jcifs.Config;
 import jcifs.UniAddress;
 import jcifs.netbios.NbtAddress;
 import jcifs.util.MD4;
+
+import static jcifs.smb.SmbConstants.SO_TIMEOUT;
 
 public final class SmbSession {
 
@@ -214,35 +216,41 @@ synchronized (transport()) {
             response.received = false;
         }
 
-        expiration = System.currentTimeMillis() + SmbTransport.SO_TIMEOUT;
-        sessionSetup( request, response );
-        if( response != null && response.received ) {
-            return;
-        }
-
-        if (request instanceof SmbComTreeConnectAndX) {
-            SmbComTreeConnectAndX tcax = (SmbComTreeConnectAndX)request;
-            if (netbiosName != null && tcax.path.endsWith("\\IPC$")) {
-                /* Some pipes may require that the hostname in the tree connect
-                 * be the netbios name. So if we have the netbios server name
-                 * from the NTLMSSP type 2 message, and the share is IPC$, we
-                 * assert that the tree connect path uses the netbios hostname.
-                 */
-                tcax.path = "\\\\" + netbiosName + "\\IPC$";
-            }
-        }
-
-        request.uid = uid;
-        request.auth = auth;
         try {
-            transport.send( request, response );
-        } catch (SmbException se) {
-// idautopatch - see http://news.gmane.org/find-root.php?group=gmane.network.samba.java&article=9353
-//            if (request instanceof SmbComTreeConnectAndX) {
-//                logoff(true);
-//            }
-            request.digest = null;
-            throw se;
+            // don't let session expire before we are done here
+            expiration = Long.MAX_VALUE;
+            sessionSetup(request, response);
+            if (response != null && response.received) {
+                return;
+            }
+
+            if (request instanceof SmbComTreeConnectAndX) {
+                SmbComTreeConnectAndX tcax = (SmbComTreeConnectAndX) request;
+                if (netbiosName != null && tcax.path.endsWith("\\IPC$")) {
+                    /* Some pipes may require that the hostname in the tree connect
+                     * be the netbios name. So if we have the netbios server name
+                     * from the NTLMSSP type 2 message, and the share is IPC$, we
+                     * assert that the tree connect path uses the netbios hostname.
+                     */
+                    tcax.path = "\\\\" + netbiosName + "\\IPC$";
+                }
+            }
+
+            request.uid = uid;
+            request.auth = auth;
+            try {
+                transport.send(request, response);
+            } catch (SmbException se) {
+                // idautopatch - see http://news.gmane.org/find-root.php?group=gmane.network.samba.java&article=9353
+                //            if (request instanceof SmbComTreeConnectAndX) {
+                //                logoff(true);
+                //            }
+                request.digest = null;
+                throw se;
+            }
+        } finally {
+            // restart expiration clock now that we are done
+            expiration = System.currentTimeMillis() + SO_TIMEOUT;
         }
 }
     }
@@ -273,17 +281,17 @@ synchronized (transport()) {
             /*
              * Session Setup And X Request / Response
              */
-    
+
             if( transport.log.level >= 4 )
                 transport.log.println( "sessionSetup: accountName=" + auth.username + ",primaryDomain=" + auth.domain );
-    
+
             /* We explicitly set uid to 0 here to prevent a new
              * SMB_COM_SESSION_SETUP_ANDX from having it's uid set to an
              * old value when the session is re-established. Otherwise a
              * "The parameter is incorrect" error can occur.
              */
             uid = 0;
-    
+
             do {
                 switch (state) {
                     case 10: /* NTLM */
@@ -292,10 +300,10 @@ synchronized (transport()) {
                             state = 20; /* NTLMSSP */
                             break;
                         }
-    
+
                         request = new SmbComSessionSetupAndX( this, andx, auth );
                         response = new SmbComSessionSetupAndXResponse( andxResponse );
-    
+
                         /* Create SMB signature digest if necessary
                          * Only the first SMB_COM_SESSION_SETUP_ANX with non-null or
                          * blank password initializes signing.
@@ -310,9 +318,9 @@ synchronized (transport()) {
                                 request.digest = new SigningDigest(signingKey, false);
                             }
                         }
-    
+
                         request.auth = auth;
-    
+
                         try {
                             transport.send( request, response );
                         } catch (SmbAuthException sae) {
@@ -320,38 +328,38 @@ synchronized (transport()) {
                         } catch (SmbException se) {
                             ex = se;
                         }
-    
+
                         if( response.isLoggedInAsGuest &&
                                     "GUEST".equalsIgnoreCase( auth.username ) == false &&
                                     transport.server.security != SmbConstants.SECURITY_SHARE &&
                                     auth != NtlmPasswordAuthentication.ANONYMOUS) {
                             throw new SmbAuthException( NtStatus.NT_STATUS_LOGON_FAILURE );
                         }
-    
+
                         if (ex != null)
                             throw ex;
-    
+
                         uid = response.uid;
-    
+
                         if( request.digest != null ) {
                             /* success - install the signing digest */
                             transport.digest = request.digest;
                         }
-    
-                        connectionState = 2;    
+
+                        connectionState = 2;
 
                         state = 0;
-    
+
                         break;
                     case 20:
                         if (nctx == null) {
                             boolean doSigning = (transport.flags2 & ServerMessageBlock.FLAGS2_SECURITY_SIGNATURES) != 0;
                             nctx = new NtlmContext(auth, doSigning);
                         }
-    
+
                         if (SmbTransport.log.level >= 4)
                             SmbTransport.log.println(nctx);
-    
+
                         if (nctx.isEstablished()) {
 
                             netbiosName = nctx.getNetbiosName();
@@ -361,7 +369,7 @@ synchronized (transport()) {
                             state = 0;
                             break;
                         }
-    
+
                         try {
                             token = nctx.initSecContext(token, 0, token.length);
                         } catch (SmbException se) {
@@ -373,20 +381,20 @@ synchronized (transport()) {
                             uid = 0;
                             throw se;
                         }
-    
+
                         if (token != null) {
                             request = new SmbComSessionSetupAndX(this, null, token);
                             response = new SmbComSessionSetupAndXResponse(null);
-    
+
                             if (transport.isSignatureSetupRequired( auth )) {
                                 byte[] signingKey = nctx.getSigningKey();
                                 if (signingKey != null)
                                     request.digest = new SigningDigest(signingKey, true);
                             }
-    
+
                             request.uid = uid;
                             uid = 0;
-    
+
                             try {
                                 transport.send( request, response );
                             } catch (SmbAuthException sae) {
@@ -401,25 +409,25 @@ synchronized (transport()) {
                                  */
                                 try { transport.disconnect(true); } catch (Exception e) {}
                             }
-    
+
                             if( response.isLoggedInAsGuest &&
                                         "GUEST".equalsIgnoreCase( auth.username ) == false) {
                                 throw new SmbAuthException( NtStatus.NT_STATUS_LOGON_FAILURE );
                             }
-    
+
                             if (ex != null)
                                 throw ex;
-    
+
                             uid = response.uid;
-    
+
                             if (request.digest != null) {
                                 /* success - install the signing digest */
                                 transport.digest = request.digest;
                             }
-    
+
                             token = response.blob;
                         }
-    
+
                         break;
                     default:
                         throw new SmbException("Unexpected session setup state: " + state);

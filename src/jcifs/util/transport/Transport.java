@@ -5,6 +5,8 @@ import java.net.*;
 import java.util.*;
 import jcifs.util.LogStream;
 
+import static java.net.SocketOptions.SO_TIMEOUT;
+
 /**
  * This class simplifies communication for protocols that support
  * multiplexing requests. It encapsulates a stream and some protocol
@@ -19,14 +21,14 @@ public abstract class Transport implements Runnable {
     static int id = 0;
     static LogStream log = LogStream.getInstance();
 
-    public static int readn( InputStream in,
-                byte[] b,
-                int off,
-                int len ) throws IOException {
+    public static int readn(InputStream in,
+                            byte[] b,
+                            int off,
+                            int len) throws IOException {
         int i = 0, n = -5;
 
         while (i < len) {
-            n = in.read( b, off + i, len - i );
+            n = in.read(b, off + i, len - i);
             if (n <= 0) {
                 break;
             }
@@ -49,79 +51,111 @@ public abstract class Transport implements Runnable {
     Thread thread;
     TransportException te;
 
-    protected HashMap response_map = new HashMap( 4 );
+    protected HashMap response_map = new HashMap(4);
 
-    protected abstract void makeKey( Request request ) throws IOException;
+    protected abstract void makeKey(Request request) throws IOException;
+
     protected abstract Request peekKey() throws IOException;
-    protected abstract void doSend( Request request ) throws IOException;
-    protected abstract void doRecv( Response response ) throws IOException;
+
+    protected abstract void doSend(Request request) throws IOException;
+
+    protected abstract void doRecv(Response response) throws IOException;
+
     protected abstract void doSkip() throws IOException;
 
-    public synchronized void sendrecv( Request request,
-                    Response response,
-                    long timeout ) throws IOException {
-            makeKey( request );
-            response.isReceived = false;
-            try {
-                response_map.put( request, response );
-                doSend( request );
-                response.expiration = System.currentTimeMillis() + timeout;
-                while (!response.isReceived) {
-                    wait( timeout );
-                    timeout = response.expiration - System.currentTimeMillis();
-                    if (timeout <= 0) {
-                        throw new TransportException( name +
-                                " timedout waiting for response to " +
-                                request );
-                    }
+    protected abstract void setReadTimeout(int timeout) throws IOException;
+
+    public synchronized void sendrecv(Request request,
+                                      Response response,
+                                      long timeout) throws IOException {
+        makeKey(request);
+        response.isReceived = false;
+        try {
+            response_map.put(request, response);
+            notifyAll();
+            doSend(request);
+            response.expiration = System.currentTimeMillis() + timeout;
+
+            while (!response.isReceived) {
+                wait(timeout);
+                timeout = response.expiration - System.currentTimeMillis();
+                if (timeout <= 0) {
+                    throw new TransportException(name +
+                            " timedout waiting for response to " +
+                            request);
                 }
-            } catch( IOException ioe ) {
-                if (log.level > 2)
-                    ioe.printStackTrace( log );
-                try {
-                    disconnect( true );
-                } catch( IOException ioe2 ) {
-                    ioe2.printStackTrace( log );
-                }
-                throw ioe;
-            } catch( InterruptedException ie ) {
-                throw new TransportException( ie );
-            } finally {
-                response_map.remove( request );
             }
-    }
-    private void loop() {
-        while( thread == Thread.currentThread() ) {
+        } catch (IOException ioe) {
+            if (log.level > 2)
+                ioe.printStackTrace(log);
             try {
-                Request key = peekKey();
-                if (key == null)
-                    throw new IOException( "end of stream" );
+                disconnect(true);
+            } catch (IOException ioe2) {
+                ioe2.printStackTrace(log);
+            }
+            throw ioe;
+        } catch (InterruptedException ie) {
+            throw new TransportException(ie);
+        } finally {
+            response_map.remove(request);
+        }
+    }
+
+    private void loop() {
+        while (thread == Thread.currentThread()) {
+            try {
+                int readTimeout;
                 synchronized (this) {
-                    Response response = (Response)response_map.get( key );
-                    if (response == null) {
-                        if (log.level >= 4)
-                            log.println( "Invalid key, skipping message" );
-                        doSkip();
-                    } else {
-                        doRecv( response );
-                        response.isReceived = true;
-                        notifyAll();
+                    // don't try to read unless we have an outstanding response
+                    // so we can set the read timeout based on the request timeout
+                    readTimeout = getLongestResponseTimeout();
+                    if (readTimeout <= 0) {
+                        wait(SO_TIMEOUT);
+                        readTimeout = getLongestResponseTimeout();
+                        if (readTimeout <= 0) {
+                            try {
+                                disconnect(false);
+                            } catch (IOException ioe) {
+                                ioe.printStackTrace(log);
+                            }
+                            continue;
+                        }
                     }
                 }
-            } catch( Exception ex ) {
+                try {
+                    setReadTimeout(readTimeout + 5000);
+                    Request key = peekKey();
+                    if (key == null)
+                        throw new IOException("end of stream");
+                    synchronized (this) {
+                        Response response = (Response) response_map.get(key);
+                        if (response == null) {
+                            if (log.level >= 4)
+                                log.println("Invalid key, skipping message");
+                            doSkip();
+                        } else {
+                            doRecv(response);
+                            response.isReceived = true;
+                            notifyAll();
+                        }
+                    }
+                } finally {
+                    setReadTimeout(SO_TIMEOUT);
+                }
+            } catch (Exception ex) {
                 String msg = ex.getMessage();
-                boolean timeout = msg != null && msg.equals( "Read timed out" );
+                boolean timeout = msg != null && msg.equals("Read timed out");
                 /* If just a timeout, try to disconnect gracefully
                  */
                 boolean hard = timeout == false;
 
                 if (!timeout && log.level >= 3)
-                    ex.printStackTrace( log );
+                    ex.printStackTrace(log);
 
                 try {
-                    disconnect( hard );
-                } catch( IOException ioe ) {
-                    ioe.printStackTrace( log );
+                    disconnect(hard);
+                } catch (IOException ioe) {
+                    ioe.printStackTrace(log);
                 }
             }
         }
@@ -140,9 +174,9 @@ public abstract class Transport implements Runnable {
      * this transport.
      */
 
-    protected abstract void doDisconnect( boolean hard ) throws IOException;
+    protected abstract void doDisconnect(boolean hard) throws IOException;
 
-    public synchronized void connect( long timeout ) throws TransportException {
+    public synchronized void connect(long timeout) throws TransportException {
         try {
             switch (state) {
                 case 0:
@@ -151,41 +185,44 @@ public abstract class Transport implements Runnable {
                     return; // already connected
                 case 4:
                     state = 0;
-                    throw new TransportException( "Connection in error", te );
+                    throw new TransportException("Connection in error", te);
                 default:
-                    TransportException te = new TransportException( "Invalid state: " + state );
+                    TransportException te = new TransportException("Invalid state: " + state);
                     state = 0;
                     throw te;
             }
 
             state = 1;
             te = null;
-            thread = new Thread( this, name );
-            thread.setDaemon( true );
+            thread = new Thread(this, name);
+            thread.setDaemon(true);
 
             synchronized (thread) {
                 thread.start();
-                thread.wait( timeout );          /* wait for doConnect */
+                thread.wait(timeout);          /* wait for doConnect */
 
                 switch (state) {
                     case 1: /* doConnect never returned */
                         state = 0;
                         thread = null;
-                        throw new TransportException( "Connection timeout" );
+                        notifyAll();
+                        throw new TransportException("Connection timeout");
                     case 2:
                         if (te != null) { /* doConnect throw Exception */
                             state = 4;                        /* error */
                             thread = null;
+                            notifyAll();
                             throw te;
                         }
                         state = 3;                         /* Success! */
                         return;
                 }
             }
-        } catch( InterruptedException ie ) {
+        } catch (InterruptedException ie) {
             state = 0;
             thread = null;
-            throw new TransportException( ie );
+            notifyAll();
+            throw new TransportException(ie);
         } finally {
             /* This guarantees that we leave in a valid state
              */
@@ -194,10 +231,12 @@ public abstract class Transport implements Runnable {
                     log.println("Invalid state: " + state);
                 state = 0;
                 thread = null;
+                notifyAll();
             }
         }
     }
-    public synchronized void disconnect( boolean hard ) throws IOException {
+
+    public synchronized void disconnect(boolean hard) throws IOException {
         IOException ioe = null;
 
         switch (state) {
@@ -210,25 +249,28 @@ public abstract class Transport implements Runnable {
                     break; /* outstanding requests */
                 }
                 try {
-                    doDisconnect( hard );
+                    doDisconnect(hard);
                 } catch (IOException ioe0) {
                     ioe = ioe0;
                 }
             case 4: /* in error - reset the transport */
                 thread = null;
                 state = 0;
+                notifyAll();
                 break;
             default:
                 if (log.level >= 1)
                     log.println("Invalid state: " + state);
                 thread = null;
                 state = 0;
+                notifyAll();
                 break;
         }
 
         if (ioe != null)
             throw ioe;
     }
+
     public void run() {
         Thread run_thread = Thread.currentThread();
         Exception ex0 = null;
@@ -239,7 +281,7 @@ public abstract class Transport implements Runnable {
              * return which would render the timeout effectively useless.
              */
             doConnect();
-        } catch( Exception ex ) {
+        } catch (Exception ex) {
             ex0 = ex; // Defer to below where we're locked
             return;
         } finally {
@@ -255,7 +297,7 @@ public abstract class Transport implements Runnable {
                     return;
                 }
                 if (ex0 != null) {
-                    te = new TransportException( ex0 );
+                    te = new TransportException(ex0);
                 }
                 state = 2; // run connected
                 run_thread.notify();
@@ -269,5 +311,23 @@ public abstract class Transport implements Runnable {
 
     public String toString() {
         return name;
+    }
+
+    protected int getLongestResponseTimeout() {
+        long timeout = 0;
+        long now = System.currentTimeMillis();
+        for (Object responseObject : response_map.values()) {
+            Response response = (Response)responseObject;
+            if (!response.isReceived) {
+                long requestTimeout = (response.expiration - now) + 5000;
+                if (timeout < requestTimeout) {
+                    timeout = requestTimeout;
+                }
+            }
+        }
+        if (timeout > Integer.MAX_VALUE) {
+            timeout = Integer.MAX_VALUE;
+        }
+        return (int)timeout;
     }
 }

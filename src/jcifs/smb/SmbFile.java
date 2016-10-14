@@ -1162,7 +1162,7 @@ if (this instanceof SmbNamedPipe) {
     public String getParent() {
         String str = url.getAuthority();
 
-        if( str.length() > 0 ) {
+        if( str != null && str.length() > 0 ) {
             StringBuffer sb = new StringBuffer( "smb://" );
 
             sb.append( str );

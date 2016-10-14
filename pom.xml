@@ -39,6 +39,8 @@
     <properties>
         <project.scm.id>github</project.scm.id>
         <skipTests>true</skipTests>
+        <org.testng.version>6.8.21</org.testng.version>
+        <commons-io.version>2.4</commons-io.version>
     </properties>
 
     <scm>
@@ -54,10 +56,23 @@
             <version>2.5</version>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>${org.testng.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>${commons-io.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <sourceDirectory>src</sourceDirectory>
+        <testSourceDirectory>examples</testSourceDirectory>
         <resources>
             <resource>
                 <directory>src</directory>
@@ -69,6 +84,19 @@
                 </excludes>
             </resource>
         </resources>
+        <testResources>
+            <testResource>
+                <directory>examples</directory>
+                <includes>
+                    <include>**</include>
+                </includes>
+                <excludes>
+                    <exclude>**/*.java</exclude>
+                    <exclude>**/*.c</exclude>
+                    <exclude>**/*.sh</exclude>
+                </excludes>
+            </testResource>
+        </testResources>
         <pluginManagement>
             <plugins>
                 <plugin>

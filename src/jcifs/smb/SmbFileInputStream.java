@@ -1,16 +1,16 @@
 /* jcifs smb client library in Java
  * Copyright (C) 2000  "Michael B. Allen" <jcifs at samba dot org>
- * 
+ *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
  * version 2.1 of the License, or (at your option) any later version.
- * 
+ *
  * This library is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  * Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
@@ -174,10 +174,11 @@ public class SmbFileInputStream extends InputStream {
                 file.log.println( "read: len=" + len + ",r=" + r + ",fp=" + fp );
 
             try {
-SmbComReadAndX request = new SmbComReadAndX( file.fid, fp, r, null );
-if( file.type == SmbFile.TYPE_NAMED_PIPE ) {
-    request.minCount = request.maxCount = request.remaining = 1024;
-}
+                SmbComReadAndX request = new SmbComReadAndX( file.fid, fp, r, null );
+                if( file.type == SmbFile.TYPE_NAMED_PIPE ) {
+                    request.minCount = request.maxCount = request.remaining = 1024;
+                    request.responseTimeout = -file.getReadTimeout();
+                }
                 file.send( request, response );
             } catch( SmbException se ) {
                 if( file.type == SmbFile.TYPE_NAMED_PIPE &&
@@ -198,7 +199,7 @@ if( file.type == SmbFile.TYPE_NAMED_PIPE ) {
     }
 /**
  * This stream class is unbuffered. Therefore this method will always
- * return 0 for streams connected to regular files. However, a 
+ * return 0 for streams connected to regular files. However, a
  * stream created from a Named Pipe this method will query the server using a
  * "peek named pipe" operation and return the number of available bytes
  * on the server.
@@ -215,10 +216,10 @@ if( file.type == SmbFile.TYPE_NAMED_PIPE ) {
         try {
             pipe = (SmbNamedPipe)file;
             file.open(SmbFile.O_EXCL, pipe.pipeType & 0xFF0000, SmbFile.ATTR_NORMAL, 0 );
-    
+
             req = new TransPeekNamedPipe( file.unc, file.fid );
             resp = new TransPeekNamedPipeResponse( pipe );
-    
+
             pipe.send( req, resp );
             if( resp.status == TransPeekNamedPipeResponse.STATUS_DISCONNECTED ||
                     resp.status == TransPeekNamedPipeResponse.STATUS_SERVER_END_CLOSED ) {
