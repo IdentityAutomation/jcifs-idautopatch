@@ -787,6 +787,25 @@ public class SmbTransport extends Transport implements SmbConstants {
         socket.setSoTimeout(timeout > SO_TIMEOUT ? timeout : SO_TIMEOUT);
     }
 
+    protected int getLongestResponseTimeout() {
+        long timeout = 0;
+        long now = System.currentTimeMillis();
+        for (Object responseObject : response_map.values()) {
+            Response response = (Response)responseObject;
+            if (!response.isReceived ||
+                    (response instanceof SmbComTransactionResponse &&
+                            ((SmbComTransactionResponse)response).hasMoreElements())) {
+                long requestTimeout = (response.expiration - now) + 5000;
+                if (timeout < requestTimeout) {
+                    timeout = requestTimeout;
+                }
+            }
+        }
+        if (timeout > Integer.MAX_VALUE) {
+            timeout = Integer.MAX_VALUE;
+        }
+        return (int)timeout;
+    }
 
 //    FileEntry[] getDfsRoots(String domainName, NtlmPasswordAuthentication auth) throws IOException {
 //        MsrpcDfsRootEnum rpc;
