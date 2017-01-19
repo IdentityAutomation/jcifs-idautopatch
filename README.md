@@ -7,7 +7,7 @@ Maven artifact
 <dependency>
   <groupId>net.idauto.oss.jcifs</groupId>
   <artifactId>jcifs-idautopatch</artifactId>
-  <version>1.3.18.6</version>
+  <version>1.3.18.7</version>
 </dependency>    
 ```    
 
