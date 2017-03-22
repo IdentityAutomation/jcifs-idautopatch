@@ -15,6 +15,10 @@ public class SidCacheTest {
         security = file.getSecurity(true);
         t3 = System.currentTimeMillis();
 
+        // avoid divide by zero
+        if (t2 == t3) {
+            t3++;
+        }
         System.out.println("dt1=" + (t2 - t1) + ",dt2=" + (t3 - t2) + " " + ((t2 - t1) / (t3 - t2)) + "x increase");
     }
 }

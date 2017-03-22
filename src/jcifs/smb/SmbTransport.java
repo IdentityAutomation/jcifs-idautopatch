@@ -21,6 +21,10 @@ package jcifs.smb;
 
 import java.io.*;
 import java.net.*;
+import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.util.*;
 
 import jcifs.*;
@@ -91,10 +95,10 @@ public class SmbTransport extends Transport implements SmbConstants {
     InetAddress localAddr;
     int localPort;
     UniAddress address;
-    Socket socket;
+    SocketChannel socketChannel;
+    Selector readSelector;
+    Selector writeSelector;
     int port, mid;
-    OutputStream out;
-    InputStream in;
     byte[] sbuf = new byte[512]; /* small local buffer */
     SmbComBlankResponse key = new SmbComBlankResponse();
     long sessionExpiration = System.currentTimeMillis() + SO_TIMEOUT;
@@ -192,24 +196,13 @@ public class SmbTransport extends Transport implements SmbConstants {
             }
             socket.setSoTimeout( SO_TIMEOUT );
 */
-
-            socket = new Socket();
-            if (localAddr != null)
-                socket.bind(new InetSocketAddress(localAddr, localPort));
-            socket.connect(new InetSocketAddress(address.getHostAddress(), 139), CONN_TIMEOUT);
-            socket.setSoTimeout( SO_TIMEOUT );
-
-            out = socket.getOutputStream();
-            in = socket.getInputStream();
+            socketConnect(139);
 
             SessionServicePacket ssp = new SessionRequestPacket( calledName,
                     NbtAddress.getLocalName() );
-            out.write( sbuf, 0, ssp.writeWireFormat( sbuf, 0 ));
-            if (readn( in, sbuf, 0, 4 ) < 4) {
-                try {
-                    socket.close();
-                } catch(IOException ioe) {
-                }
+            socketWrite(sbuf, ssp.writeWireFormat( sbuf, 0 ));
+            if (socketRead(sbuf, 0, 4) < 4) {
+                socketClose();
                 throw new SmbException( "EOF during NetBIOS session request" );
             }
             switch( sbuf[0] & 0xFF ) {
@@ -218,11 +211,11 @@ public class SmbTransport extends Transport implements SmbConstants {
                         log.println( "session established ok with " + address );
                     return;
                 case SessionServicePacket.NEGATIVE_SESSION_RESPONSE:
-                    int errorCode = (int)( in.read() & 0xFF );
+                    int errorCode = (int)( socketRead() & 0xFF );
                     switch (errorCode) {
                         case NbtException.CALLED_NOT_PRESENT:
                         case NbtException.NOT_LISTENING_CALLED:
-                            socket.close();
+                            socketClose();
                             break;
                         default:
                             disconnect( true );
@@ -261,14 +254,7 @@ public class SmbTransport extends Transport implements SmbConstants {
                 }
                 socket.setSoTimeout( SO_TIMEOUT );
 */
-                socket = new Socket();
-                if (localAddr != null)
-                    socket.bind(new InetSocketAddress(localAddr, localPort));
-                socket.connect(new InetSocketAddress(address.getHostAddress(), port), CONN_TIMEOUT);
-                socket.setSoTimeout( SO_TIMEOUT );
-
-                out = socket.getOutputStream();
-                in = socket.getInputStream();
+                socketConnect(port);
             }
 
             if (++mid == 32000) mid = 1;
@@ -283,8 +269,7 @@ public class SmbTransport extends Transport implements SmbConstants {
                 }
             }
 
-            out.write( sbuf, 0, 4 + n );
-            out.flush();
+            socketWrite( sbuf, 4 + n );
             /* Note the Transport thread isn't running yet so we can
              * read from the socket here.
              */
@@ -294,7 +279,7 @@ public class SmbTransport extends Transport implements SmbConstants {
             if (size < 33 || (4 + size) > sbuf.length ) {
                 throw new IOException( "Invalid payload size: " + size );
             }
-            readn( in, sbuf, 4 + 32, size - 32 );
+            socketRead(sbuf, 4 + 32, size - 32);
             resp.decode( sbuf, 4 );
 
             if (log.level >= 4) {
@@ -316,7 +301,6 @@ public class SmbTransport extends Transport implements SmbConstants {
         /*
          * Negotiate Protocol Request / Response
          */
-
         SmbComNegotiateResponse resp = new SmbComNegotiateResponse( server );
         try {
             negotiate( port, resp );
@@ -369,13 +353,9 @@ public class SmbTransport extends Transport implements SmbConstants {
                 SmbSession ssn = (SmbSession)iter.next();
                 ssn.logoff( hard );
             }
-            socket.shutdownOutput();
-            out.close();
-            in.close();
-            socket.close();
+            socketClose();
         } finally {
             digest = null;
-            socket = null;
             tconHostName = null;
         }
     }
@@ -388,11 +368,11 @@ public class SmbTransport extends Transport implements SmbConstants {
     protected Request peekKey() throws IOException {
         int n;
         do {
-            if ((n = readn( in, sbuf, 0, 4 )) < 4)
+            if ((n = socketRead(sbuf, 0, 4 )) < 4)
                 return null;
         } while (sbuf[0] == (byte)0x85);  /* Dodge NetBIOS keep-alive */
                                                    /* read smb header */
-        if ((n = readn( in, sbuf, 4, 32 )) < 32)
+        if ((n = socketRead(sbuf, 4, 32)) < 32)
             return null;
         if (log.level >= 4) {
             log.println( "New data read: " + this );
@@ -421,7 +401,7 @@ public class SmbTransport extends Transport implements SmbConstants {
                 sbuf[i] = sbuf[i + 1];
             }
             int b;
-            if ((b = in.read()) == -1) return null;
+            if ((b = socketRead()) == -1) return null;
             sbuf[35] = (byte)b;
         }
 
@@ -453,7 +433,7 @@ public class SmbTransport extends Transport implements SmbConstants {
             /* For some reason this can sometimes get broken up into another
              * "NBSS Continuation Message" frame according to WireShark
              */
-            out.write( BUF, 0, 4 + n );
+            socketWrite( BUF, 4 + n );
         }
     }
     protected void doSend0( Request request ) throws IOException {
@@ -489,17 +469,17 @@ public class SmbTransport extends Transport implements SmbConstants {
                 SmbComReadAndXResponse r = (SmbComReadAndXResponse)resp;
                 int off = HEADER_LENGTH;
                                     /* WordCount thru dataOffset always 27 */
-                readn( in, BUF, 4 + off, 27 ); off += 27;
+                socketRead(BUF, 4 + off, 27 ); off += 27;
                 resp.decode( BUF, 4 );
                                               /* EMC can send pad w/o data */
                 int pad = r.dataOffset - off;
                 if (r.byteCount > 0 && pad > 0 && pad < 4)
-                    readn( in, BUF, 4 + off, pad);
+                    socketRead(BUF, 4 + off, pad);
 
                 if (r.dataLength > 0)
-                    readn( in, r.b, r.off, r.dataLength );  /* read direct */
+                    socketRead(r.b, r.off, r.dataLength );  /* read direct */
             } else {
-                readn( in, BUF, 4 + 32, size - 32 );
+                socketRead(BUF, 4 + 32, size - 32 );
                 resp.decode( BUF, 4 );
                 if (resp instanceof SmbComTransactionResponse) {
                     ((SmbComTransactionResponse)resp).nextElement();
@@ -523,12 +503,14 @@ public class SmbTransport extends Transport implements SmbConstants {
         }
     }
     protected void doSkip() throws IOException {
-        int size = Encdec.dec_uint16be( sbuf, 2 ) & 0xFFFF;
-        if (size < 33 || (4 + size) > rcv_buf_size ) {
-            /* log message? */
-            in.skip( in.available() );
-        } else {
-            in.skip( size - 32 );
+        synchronized ( BUF ) {
+            int size = Encdec.dec_uint16be(sbuf, 2) & 0xFFFF;
+            if (size < 33 || (4 + size) > rcv_buf_size) {
+                /* log message? */
+                while (socketChannel.read(ByteBuffer.wrap(BUF)) > 0);
+            } else {
+                socketRead(BUF, 0, size - 32);
+            }
         }
     }
     void checkStatus( ServerMessageBlock req, ServerMessageBlock resp ) throws SmbException {
@@ -617,7 +599,6 @@ public class SmbTransport extends Transport implements SmbConstants {
                         resp.isReceived = false;
                         try {
                             response_map.put( req, resp );
-                            notifyAll();
 
                             /*
                              * Send multiple fragments
@@ -783,19 +764,15 @@ public class SmbTransport extends Transport implements SmbConstants {
         return drs;
     }
 
-    protected void setReadTimeout(int timeout) throws IOException {
-        socket.setSoTimeout(timeout > SO_TIMEOUT ? timeout : SO_TIMEOUT);
-    }
-
-    protected int getLongestResponseTimeout() {
-        long timeout = 0;
+    private int getReadTimeout() {
+        long timeout = SO_TIMEOUT;
         long now = System.currentTimeMillis();
-        for (Object responseObject : response_map.values()) {
+        for (Object responseObject : new ArrayList(response_map.values())) {
             Response response = (Response)responseObject;
             if (!response.isReceived ||
                     (response instanceof SmbComTransactionResponse &&
                             ((SmbComTransactionResponse)response).hasMoreElements())) {
-                long requestTimeout = (response.expiration - now) + 5000;
+                long requestTimeout = (response.expiration - now) + (DEFAULT_SO_TIMEOUT - DEFAULT_RESPONSE_TIMEOUT);
                 if (timeout < requestTimeout) {
                     timeout = requestTimeout;
                 }
@@ -806,6 +783,108 @@ public class SmbTransport extends Transport implements SmbConstants {
         }
         return (int)timeout;
     }
+
+    private void socketConnect(int port) throws IOException {
+        socketChannel = SocketChannel.open();
+        if (localAddr != null) {
+            socketChannel.bind(new InetSocketAddress(localAddr, localPort));
+        }
+        socketChannel.socket().connect(new InetSocketAddress(address.getHostAddress(), port), CONN_TIMEOUT);
+        socketChannel.configureBlocking(false);
+        readSelector = Selector.open();
+        socketChannel.register(readSelector, SelectionKey.OP_READ);
+        writeSelector = Selector.open();
+        socketChannel.register(writeSelector, SelectionKey.OP_WRITE);
+    }
+
+    private void socketClose() {
+        if (socketChannel != null && socketChannel.isOpen()) {
+            try {
+                socketChannel.shutdownOutput();
+            } catch (IOException ignored) {
+            }
+            try {
+                socketChannel.close();
+            } catch (IOException ignored) {
+            }
+        }
+        if (readSelector != null && readSelector.isOpen()) {
+            try {
+                readSelector.close();
+            } catch (IOException ignored) {
+            }
+        }
+        socketChannel =  null;
+        readSelector =  null;
+    }
+
+
+    private void socketWrite(byte buf[], int length) throws IOException {
+        ByteBuffer byteBuffer = ByteBuffer.wrap(buf, 0, length);
+        for (;;) {
+            if (socketChannel.write(byteBuffer) < 0) {
+                throw new EOFException();
+            }
+            if (byteBuffer.hasRemaining()) {
+                Set<SelectionKey> keys = writeSelector.selectedKeys();
+                if (writeSelector.selectedKeys().isEmpty()) {
+                    throw new SocketTimeoutException();
+                } else {
+                    keys.clear();
+                    writeSelector.select(SO_TIMEOUT);
+                }
+            } else {
+                break;
+            }
+        }
+    }
+
+    private int socketRead(byte[] b,
+                           int off,
+                           int len) throws IOException {
+        ByteBuffer byteBuffer = ByteBuffer.allocate(len);
+        int n = -5;
+        long totalTimeout = 0;
+        long timeout = getReadTimeout();
+        outer:
+        while (byteBuffer.position() < len) {
+            readSelector.select(timeout);
+            Set<SelectionKey> keys = readSelector.selectedKeys();
+            if (readSelector.selectedKeys().isEmpty()) {
+                totalTimeout += timeout;
+                timeout = getReadTimeout();
+                if (timeout > totalTimeout) {
+                    timeout -= totalTimeout;
+                    continue;
+                }
+                break;
+            } else {
+                Iterator<SelectionKey> it = keys.iterator();
+                while(it.hasNext()) {
+                    SelectionKey key = it.next();
+                    it.remove();
+                    if (key.isReadable()) {
+                        if (socketChannel.read(byteBuffer) < 0) {
+                            break outer;
+                        }
+                    }
+                }
+            }
+        }
+        int bytesRead = byteBuffer.position();
+        byteBuffer.position(0);
+        byteBuffer.get(b, off, bytesRead);
+        return bytesRead;
+    }
+
+    private int socketRead() throws IOException {
+        byte [] buf = new byte[1];
+        if (socketRead(buf, 0, 1) <= 0) {
+            return -1;
+        }
+        return (int)(buf[0]);
+    }
+
 
 //    FileEntry[] getDfsRoots(String domainName, NtlmPasswordAuthentication auth) throws IOException {
 //        MsrpcDfsRootEnum rpc;
