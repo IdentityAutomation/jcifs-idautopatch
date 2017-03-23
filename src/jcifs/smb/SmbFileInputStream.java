@@ -18,7 +18,6 @@
 
 package jcifs.smb;
 
-import java.net.URL;
 import java.net.UnknownHostException;
 import java.net.MalformedURLException;
 import java.io.InputStream;
@@ -183,17 +182,17 @@ public class SmbFileInputStream extends InputStream {
                     SmbComReadAndX request = new SmbComReadAndX(file.fid, fp, r, null);
                     if (file.type == SmbFile.TYPE_NAMED_PIPE) {
                         request.minCount = request.maxCount = request.remaining = 1024;
-                    }
-                    request.responseTimeout = -file.getReadTimeout();
-                    // keep-alive thread
-                    if (request.responseTimeout > (SO_TIMEOUT - (SO_TIMEOUT - RESPONSE_TIMEOUT))) {
-                        // since timeout is longer than normal, make sure the session stays alive by sending a periodic ping
-                        if (keepAliveThread == null || !keepAliveThread.isAlive()) {
-                            KeepAlive keepAlive = new KeepAlive();
-                            keepAliveThread = new Thread(new KeepAlive());
-                            keepAliveThread.setDaemon(true);
-                            keepAliveThread.setName(keepAlive.toString());
-                            keepAliveThread.start();
+                        request.responseTimeout = -file.getReadTimeout();
+                        // keep-alive thread
+                        if (request.responseTimeout > (SO_TIMEOUT - (SO_TIMEOUT - RESPONSE_TIMEOUT))) {
+                            // since timeout is longer than normal, make sure the session stays alive by sending a periodic ping
+                            if (keepAliveThread == null || !keepAliveThread.isAlive()) {
+                                KeepAlive keepAlive = new KeepAlive();
+                                keepAliveThread = new Thread(new KeepAlive());
+                                keepAliveThread.setDaemon(true);
+                                keepAliveThread.setName(keepAlive.toString());
+                                keepAliveThread.start();
+                            }
                         }
                     }
                     file.send(request, response);
