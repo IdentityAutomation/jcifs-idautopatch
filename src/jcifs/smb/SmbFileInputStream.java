@@ -18,7 +18,6 @@
 
 package jcifs.smb;
 
-import java.net.URL;
 import java.net.UnknownHostException;
 import java.net.MalformedURLException;
 import java.io.InputStream;
@@ -26,6 +25,9 @@ import java.io.IOException;
 import java.io.InterruptedIOException;
 
 import jcifs.util.transport.TransportException;
+
+import static jcifs.smb.SmbConstants.RESPONSE_TIMEOUT;
+import static jcifs.smb.SmbConstants.SO_TIMEOUT;
 
 /**
  * This InputStream can read bytes from a file on an SMB file server. Offsets are 64 bits.
@@ -166,34 +168,53 @@ public class SmbFileInputStream extends InputStream {
             response.responseTimeout = 0;
         }
 
+        Thread keepAliveThread = null;
+
         int r, n;
-        do {
-            r = len > readSize ? readSize : len;
+        try {
+            do {
+                r = len > readSize ? readSize : len;
 
-            if( file.log.level >= 4 )
-                file.log.println( "read: len=" + len + ",r=" + r + ",fp=" + fp );
+                if (file.log.level >= 4)
+                    file.log.println("read: len=" + len + ",r=" + r + ",fp=" + fp);
 
-            try {
-                SmbComReadAndX request = new SmbComReadAndX( file.fid, fp, r, null );
-                if( file.type == SmbFile.TYPE_NAMED_PIPE ) {
-                    request.minCount = request.maxCount = request.remaining = 1024;
-                    request.responseTimeout = -file.getReadTimeout();
+                try {
+                    SmbComReadAndX request = new SmbComReadAndX(file.fid, fp, r, null);
+                    if (file.type == SmbFile.TYPE_NAMED_PIPE) {
+                        request.minCount = request.maxCount = request.remaining = 1024;
+                        request.responseTimeout = -file.getReadTimeout();
+                        // keep-alive thread
+                        if (request.responseTimeout > (SO_TIMEOUT - (SO_TIMEOUT - RESPONSE_TIMEOUT))) {
+                            // since timeout is longer than normal, make sure the session stays alive by sending a periodic ping
+                            if (keepAliveThread == null || !keepAliveThread.isAlive()) {
+                                KeepAlive keepAlive = new KeepAlive();
+                                keepAliveThread = new Thread(new KeepAlive());
+                                keepAliveThread.setDaemon(true);
+                                keepAliveThread.setName(keepAlive.toString());
+                                keepAliveThread.start();
+                            }
+                        }
+                    }
+                    file.send(request, response);
+                } catch (SmbException se) {
+                    if (file.type == SmbFile.TYPE_NAMED_PIPE &&
+                            se.getNtStatus() == NtStatus.NT_STATUS_PIPE_BROKEN) {
+                        return -1;
+                    }
+                    throw seToIoe(se);
                 }
-                file.send( request, response );
-            } catch( SmbException se ) {
-                if( file.type == SmbFile.TYPE_NAMED_PIPE &&
-                        se.getNtStatus() == NtStatus.NT_STATUS_PIPE_BROKEN ) {
-                    return -1;
+                if ((n = response.dataLength) <= 0) {
+                    return (int) ((fp - start) > 0L ? fp - start : -1);
                 }
-                throw seToIoe(se);
+                fp += n;
+                len -= n;
+                response.off += n;
+            } while (len > 0 && n == r);
+        } finally {
+            if (keepAliveThread != null && keepAliveThread.isAlive()) {
+                keepAliveThread.interrupt();
             }
-            if(( n = response.dataLength ) <= 0 ) {
-                return (int)((fp - start) > 0L ? fp - start : -1);
-            }
-            fp += n;
-            len -= n;
-            response.off += n;
-        } while( len > 0 && n == r );
+        }
 
         return (int)(fp - start);
     }
@@ -243,6 +264,32 @@ public class SmbFileInputStream extends InputStream {
             return n;
         }
         return 0;
+    }
+
+    private class KeepAlive implements Runnable {
+        @Override
+        public void run() {
+            for(;;) {
+                try {
+                    Thread.sleep(SO_TIMEOUT/2);
+                    ping();
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        }
+
+        private boolean ping() {
+            SmbComEcho req = new SmbComEcho(1);
+            SmbComEchoResponse resp = new SmbComEchoResponse();
+
+            try {
+                file.send(req, resp);
+                return true;
+            } catch (SmbException se) {
+                return false;
+            }
+        }
     }
 }
 

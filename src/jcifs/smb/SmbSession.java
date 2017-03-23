@@ -169,7 +169,7 @@ synchronized (DOMAIN) {
 
     SmbTransport transport = null;
     NtlmPasswordAuthentication auth;
-    long expiration;
+    volatile long expiration;
     String netbiosName = null;
 
     SmbSession( UniAddress address, int port,
